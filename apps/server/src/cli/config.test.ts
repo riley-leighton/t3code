@@ -30,7 +30,7 @@ import {
   SERVICE_LAUNCHER_CONTEXT_ENV,
   SERVICE_LAUNCHER_PROTOCOL,
 } from "../cloud/serviceProtocol.ts";
-import { deriveServerPaths } from "../config.ts";
+import { deriveServerPaths, forkSourceDir } from "../config.ts";
 import { resolveServerConfig } from "./config.ts";
 
 const deriveExplicitServerPaths = (baseDir: string, devUrl: URL | undefined) =>
@@ -362,6 +362,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         cwd: process.cwd(),
         baseDir,
         ...derivedPaths,
+        forkSourceDir,
         host: "127.0.0.1",
         staticDir: undefined,
         devUrl: new URL("http://127.0.0.1:4173"),
@@ -441,6 +442,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         cwd: process.cwd(),
         baseDir,
         ...derivedPaths,
+        forkSourceDir,
         host: "127.0.0.1",
         staticDir: undefined,
         devUrl: new URL("http://127.0.0.1:4173"),
@@ -678,6 +680,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         cwd: process.cwd(),
         baseDir,
         ...derivedPaths,
+        forkSourceDir,
         host: undefined,
         staticDir: resolved.staticDir,
         devUrl: undefined,

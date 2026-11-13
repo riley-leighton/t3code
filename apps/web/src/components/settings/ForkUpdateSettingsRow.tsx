@@ -1,33 +1,50 @@
+import { useAtomValue } from "@effect/atom-react";
+import type { ServerForkUpdate } from "@t3tools/contracts";
+import { Atom } from "effect/reactivity";
 import { useState } from "react";
 
 import { useOpenLocalWorkspace } from "../../hooks/useOpenLocalWorkspace";
 import { randomUUID } from "../../lib/utils";
 import { usePrimaryEnvironment } from "../../state/environments";
+import { primaryServerConfigAtom } from "../../state/server";
 import { Button } from "../ui/button";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 
-/** The checkout this build came from. The fork has no update feed, so it updates from source. */
-const FORK_SOURCE_DIR = import.meta.env.T3CODE_FORK_SOURCE_DIR;
+const primaryForkUpdateAtom = Atom.make(
+  (get): ServerForkUpdate | undefined => get(primaryServerConfigAtom)?.forkUpdate,
+).pipe(Atom.withLabel("web-primary-fork-update"));
 
-const FORK_UPDATE_PROMPT = `Update this fork of T3 Code from upstream and rebuild the desktop app.
+const forkUpdatePrompt = (
+  sourceDir: string,
+) => `Update this fork of T3 Code from upstream and rebuild the desktop app.
 
-Follow "Update from upstream" in docs/operations/fork.md, in this checkout (${FORK_SOURCE_DIR}).
+Follow "Update from upstream" in docs/operations/fork.md, in this checkout (${sourceDir}).
 
 - If the work tree has uncommitted changes, stop and ask me what to do with them.
 - If upstream has nothing new, say so and stop.
 - Do not push.
 - When the DMG is built, open it and tell me to quit the app and replace it in Applications.`;
 
-/** Opens a thread in the fork's checkout that merges upstream T3 Code and rebuilds the app. */
+/** Whether the fork's source checkout has upstream's newest stable release, and a way to merge it. */
 export function ForkUpdateSettingsRow() {
+  const forkUpdate = useAtomValue(primaryForkUpdateAtom);
   const primaryEnvironment = usePrimaryEnvironment();
   const openLocalWorkspace = useOpenLocalWorkspace();
   const [pending, setPending] = useState(false);
 
   const os = primaryEnvironment?.serverConfig?.environment.platform.os;
-  if (FORK_SOURCE_DIR === "" || os === undefined || os === "unknown") return null;
+  if (forkUpdate === undefined || os === undefined || os === "unknown") return null;
+
+  if (forkUpdate.merged) {
+    return (
+      <SettingsRow
+        {...searchableSetting("fork-update")}
+        description={`Includes T3 Code ${forkUpdate.latestStableTag}.`}
+      />
+    );
+  }
 
   const start = () => {
     setPending(true);
@@ -37,10 +54,10 @@ export function ForkUpdateSettingsRow() {
           version: 1,
           requestId: randomUUID(),
           type: "open-workspace",
-          workspaceRoot: FORK_SOURCE_DIR,
+          workspaceRoot: forkUpdate.sourceDir,
           platform: os === "windows" ? "win32" : os,
         },
-        { prompt: FORK_UPDATE_PROMPT },
+        { prompt: forkUpdatePrompt(forkUpdate.sourceDir) },
       )
       .then((response) => {
         if (response.ok) return;
@@ -58,7 +75,7 @@ export function ForkUpdateSettingsRow() {
   return (
     <SettingsRow
       {...searchableSetting("fork-update")}
-      description={`Opens a thread in ${FORK_SOURCE_DIR} that merges the latest T3 Code and rebuilds this app. You send the prompt and install the new build yourself.`}
+      description={`Update to ${forkUpdate.latestStableTag}. Opens a thread in ${forkUpdate.sourceDir} that merges it and rebuilds this app. You send the prompt and install the new build yourself.`}
       control={
         <Button
           size="sm"
@@ -66,7 +83,7 @@ export function ForkUpdateSettingsRow() {
           disabled={pending || !openLocalWorkspace.ready}
           onClick={start}
         >
-          Update from upstream
+          Update
         </Button>
       }
     />

@@ -894,7 +894,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Fork updates",
     to: "/settings/about",
     searchTerms: ["upstream merge rebuild captain fork source update upgrade"],
-    desktopOnly: true,
   },
   {
     id: "cli-command",

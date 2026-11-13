@@ -420,7 +420,6 @@ function AboutVersionSection() {
           }
         />
       ) : null}
-      {hasDesktopBridge ? <ForkUpdateSettingsRow /> : null}
       {hasDesktopBridge ? <CliCommandSettingsRow /> : null}
       {switchChannel === null ? null : (
         <UpdateTrackSwitchDialog channel={switchChannel} onClose={() => setSwitchChannel(null)} />
@@ -2274,6 +2273,7 @@ export function AboutSettingsPanel() {
             />
           </>
         )}
+        <ForkUpdateSettingsRow />
         <MobileAppSettingsRow />
         {primaryEnvironmentId === null ? null : (
           <SettingsRow
