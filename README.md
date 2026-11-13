@@ -23,6 +23,9 @@
   </a>
 </p>
 
+> [!NOTE]
+> **This is a fork of [T3 Code](https://github.com/pingdotgg/t3code) that adds [project captains](./docs/user/thread-sidebar.md#ask-the-projects-captain).** A captain is a standing orchestrator thread for a project. You plan work with it, it launches threads to do that work, and T3 Code wakes it when one finishes, fails or asks a question. The download links on this page are for the official app. To run the fork, [build it from source](./docs/operations/fork.md). It installs beside the official app and keeps its own data.
+
 T3 Code runs the coding agents on your machine and gives them one fast interface. Start a thread at your desk, then approve the next step from your phone.
 
 It works with Claude Code, Codex, Cursor, OpenCode, Grok Build, Antigravity, Kiro, Pi, Muse Code, fx, and any [ACP](./docs/user/providers-acp.md) agent. If an agent is set up on your computer, T3 Code can control it.
