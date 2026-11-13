@@ -34,7 +34,7 @@ import { buildThreadRouteParams } from "../threadRoutes";
 import { findLoadedCaptain } from "./useOpenCaptain.logic";
 
 /** A new captain starts on the captain model, else the project's default, else the model the user last chose. */
-function resolveCaptainModelSelection(input: {
+export function resolveCaptainModelSelection(input: {
   readonly projectRef: ScopedProjectRef;
   readonly captainModel: ModelSelection | null;
   readonly projectDefault: ModelSelection | null;
