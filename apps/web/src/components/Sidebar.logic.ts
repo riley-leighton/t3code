@@ -1002,6 +1002,19 @@ export function shouldRecedeSidebarThread(input: {
   return false;
 }
 
+/** A pinned captain with no thread under it and nothing for the user; pinned, it cannot settle. */
+export function isIdleCaptain(input: {
+  /** Undefined unless the row is a pinned captain. */
+  readonly nestedThreadCount: number | undefined;
+  readonly status: SidebarThreadStatus;
+  readonly isUnread: boolean;
+  readonly isWoke: boolean;
+}): boolean {
+  return (
+    input.nestedThreadCount === 0 && input.status === "ready" && !input.isUnread && !input.isWoke
+  );
+}
+
 type SidebarThreadStatusInput = Pick<
   SidebarThreadSummary,
   | "hasPendingApprovals"
