@@ -84,6 +84,7 @@ import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import {
   animateSidebarLayoutChanges,
   hasUnseenCompletion,
+  isIdleCaptain,
   resolveSidebarRowAccessibility,
   type SidebarDropVerb,
   resolveSidebarThreadStatus,
@@ -554,6 +555,8 @@ type SidebarThreadRowProps = {
   snoozeSupported: boolean;
   pinningSupported: boolean;
   isPinned: boolean;
+  // The threads nested under this row; set only on a pinned captain.
+  captainThreadCount?: number | undefined;
   sortable?: SortableThreadRowBag | undefined;
   dropVerb: SidebarDropVerb | null;
   dragOverPinned: boolean;
@@ -742,6 +745,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     isWoke,
     isActive: props.isActive,
     isSelected,
+  });
+  const idleCaptain = isIdleCaptain({
+    nestedThreadCount: props.captainThreadCount,
+    status,
+    isUnread,
+    isWoke,
   });
   const topStatus =
     status === "preparing" || status === "working"
@@ -972,7 +981,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
 
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-    variantAction === "unsettle" &&
+    (variantAction === "unsettle" || idleCaptain) &&
       !props.isActive &&
       "[&:not(:hover):not(:focus-within)_*]:text-secondary-label",
     props.isActive

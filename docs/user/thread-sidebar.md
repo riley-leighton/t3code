@@ -71,7 +71,9 @@ checkout. It starts pinned, which keeps it at the top of the sidebar and stops i
 
 The captain's row carries a ship's wheel. While it is pinned, the threads it starts sit
 indented under it, in place of the inbox and the Working shelf, until they settle or you snooze
-them. They stay where they are when you drag other rows.
+them. They stay where they are when you drag other rows. A pinned captain with no threads under
+it and nothing for you to read or answer dims like a settled thread, so the captains in full view
+are the ones with work in flight.
 
 The threads a captain starts are ordinary threads. When one finishes, fails or asks a
 question, T3 Code starts a captain turn so it can take the next step or tell you. The same goes

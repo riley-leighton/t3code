@@ -23,6 +23,7 @@ import {
   sortInboxThreadsByReturn,
   resolveSidebarDropTarget,
   nestCaptainThreads,
+  isIdleCaptain,
   planSidebarThreadDrop,
   resolveSidebarReorderableThreadKeys,
   sortPinnedThreadsForSidebar,
@@ -1144,6 +1145,19 @@ describe("Working shelf (beta)", () => {
 
       expect(result.active).toBe(input.active);
       expect(result.nestedByCaptain.size).toBe(0);
+    });
+
+    it("calls a pinned captain idle only with no thread under it and nothing for the user", () => {
+      const read = { status: "ready", isUnread: false, isWoke: false } as const;
+      expect(isIdleCaptain({ ...read, nestedThreadCount: 0 })).toBe(true);
+      expect(isIdleCaptain({ ...read, nestedThreadCount: 1 })).toBe(false);
+      // Not a pinned captain.
+      expect(isIdleCaptain({ ...read, nestedThreadCount: undefined })).toBe(false);
+      expect(isIdleCaptain({ ...read, nestedThreadCount: 0, isUnread: true })).toBe(false);
+      expect(isIdleCaptain({ ...read, nestedThreadCount: 0, isWoke: true })).toBe(false);
+      for (const status of ["working", "approval", "input", "failed"] as const) {
+        expect(isIdleCaptain({ ...read, nestedThreadCount: 0, status })).toBe(false);
+      }
     });
   });
 
