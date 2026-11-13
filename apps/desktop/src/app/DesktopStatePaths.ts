@@ -16,7 +16,8 @@ export function resolveDesktopBaseDir(input: {
   readonly t3Home: Option.Option<string>;
 }): string {
   return Option.getOrElse(normalizeConfiguredBaseDir(input.t3Home), () =>
-    input.joinPath(input.homeDirectory, ".t3"),
+    // The fork keeps its own home: the official app's database may be newer than this build reads.
+    input.joinPath(input.homeDirectory, ".t3-captain"),
   );
 }
 
