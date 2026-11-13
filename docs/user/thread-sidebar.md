@@ -75,9 +75,10 @@ them. They stay where they are when you drag other rows.
 
 The threads a captain starts are ordinary threads. When one finishes, fails or asks a
 question, T3 Code starts a captain turn so it can take the next step or tell you. The same goes
-for a thread the captain sends a message to. Updates that arrive while the captain is busy reach
-it together once its turn ends, and a turn you start yourself in one of those threads does not
-report to it. After 20 wake-ups in a row with no message from you, they pause until you write
+for a thread the captain sends a message to. A thread finishes once it owes no more work, so one
+that watches a pull request reports when the watch ends, for example when the pull request
+merges. Updates that arrive while the captain is busy reach it together once its turn ends, and
+a turn you start yourself in one of those threads does not report to it. After 20 wake-ups in a row with no message from you, they pause until you write
 to the captain.
 
 Each wake-up is a turn on the captain's model. Turn them off with **Settings → Threads →

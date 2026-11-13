@@ -2,6 +2,7 @@ import {
   CommandId,
   MessageId,
   isCurrentCaptainThread,
+  type OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2Run,
   type RunId,
@@ -10,6 +11,7 @@ import {
 } from "@t3tools/contracts";
 import { T3_CODE_CAPTAIN_NO_UPDATE } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { delegatedTaskProgress } from "@t3tools/provider-core/server/subagentProjection";
+import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -39,6 +41,18 @@ const ENDED_RUN_STATUSES: ReadonlyArray<OrchestrationV2Run["status"]> = [
   "failed",
   "interrupted",
   "cancelled",
+];
+const SETTLED_RUN_STATUSES: ReadonlyArray<OrchestrationV2Run["status"]> = [
+  ...ENDED_RUN_STATUSES,
+  "rolled_back",
+];
+/** What can end a thread's remaining work once its last run has ended. */
+const SETTLING_EVENT_TYPES: ReadonlyArray<OrchestrationV2DomainEvent["type"]> = [
+  "thread.pull-request-link-updated",
+  "thread.pull-request-synced",
+  "provider-thread.updated",
+  "subagent.updated",
+  "run.background-work-cancelled",
 ];
 
 interface Notice {
@@ -78,10 +92,9 @@ const wakeSummary = (notices: ReadonlyArray<Notice>) => {
 };
 
 /**
- * Starts a captain turn when a thread finishes, fails or asks a question in work the captain
- * asked for: its runs begin from a message the captain sent, or follow up on one. Updates wait
- * while the captain is mid-turn and go out together when it ends. Held updates and the wake
- * count live in memory, so a server restart drops the ones not yet sent.
+ * Starts a captain turn when work the captain asked for finishes, fails or asks a question.
+ * Finished means no work owed, pull request watches included. Updates wait out the captain's
+ * turn. Pending state lives in memory, so a server restart drops updates not yet sent.
  */
 export class CaptainWakeReactor extends Context.Service<
   CaptainWakeReactor,
@@ -103,9 +116,24 @@ const make = Effect.gen(function* () {
   const reported = new Map<string, RunId>();
   const unattendedWakes = new Map<ThreadId, number>();
 
-  /** The captain whose message started this run, or the run it follows up on. */
+  /** Captain work whose run ended while it still owed work, checked again as that work ends. */
+  const unsettled = new Set<ThreadId>();
+
+  const currentCaptain = Effect.fnUntraced(function* (threadId: ThreadId) {
+    // A deleted thread has no turn to wake.
+    const thread = yield* projections
+      .getThread(threadId)
+      .pipe(Effect.catchTags({ ProjectionStoreThreadNotFoundError: () => Effect.undefined }));
+    return thread !== undefined && isCurrentCaptainThread(thread) ? thread.id : undefined;
+  });
+
+  /**
+   * The captain whose message started this run, or the run it follows up on. T3 Code's own
+   * runs follow up: a delegated result, a pull request or monitor wake, a restart. A message from
+   * the user, a scheduled task or another agent hands the work to them.
+   */
   const captainOf = Effect.fnUntraced(function* (
-    threadId: ThreadId,
+    thread: Pick<OrchestrationV2AppThread, "id" | "launchedByThreadId">,
     runs: ReadonlyArray<OrchestrationV2Run>,
     runId: RunId,
   ) {
@@ -114,32 +142,87 @@ const make = Effect.gen(function* () {
     if (start === -1) return undefined;
     const candidates = newestFirst.slice(start, start + MAX_FOLLOW_UP_RUNS);
     const messages = yield* projections.getMessagesById(
-      threadId,
+      thread.id,
       candidates.map((run) => run.userMessageId),
     );
     for (const run of candidates) {
       const message = messages.get(run.userMessageId);
-      if (message === undefined) return undefined;
-      if (message.senderThreadId !== undefined) {
-        if (message.senderThreadId === threadId) return undefined;
-        // A deleted sender has no thread to wake.
-        const sender = yield* projections
-          .getThread(message.senderThreadId)
-          .pipe(Effect.catchTags({ ProjectionStoreThreadNotFoundError: () => Effect.undefined }));
-        return sender !== undefined && isCurrentCaptainThread(sender) ? sender.id : undefined;
+      if (message?.senderThreadId !== undefined && message.senderThreadId !== thread.id) {
+        return yield* currentCaptain(message.senderThreadId);
       }
-      // T3 Code's own follow-ups continue the work an earlier message asked for.
       const followsUp =
-        message.notification !== undefined ||
         run.restartContinuationOfRunId !== undefined ||
-        run.usageLimitContinuationOfRunId !== undefined;
+        run.usageLimitContinuationOfRunId !== undefined ||
+        (message !== undefined &&
+          message.createdBy !== "user" &&
+          (message.notification !== undefined ||
+            message.delegatedCompletion !== undefined ||
+            message.senderThreadId === thread.id));
       if (!followsUp) return undefined;
     }
-    return undefined;
+    // Only follow-ups as far back as it looked: the work is still what its launcher asked for.
+    return thread.launchedByThreadId === undefined
+      ? undefined
+      : yield* currentCaptain(thread.launchedByThreadId);
+  });
+
+  /**
+   * Holds a notice once the thread owes no more work: what t3_thread_wait waits for, and also
+   * no T3 Code wake-up still running and no pull request watch still open.
+   */
+  const reportIfSettled = Effect.fnUntraced(function* (threadId: ThreadId) {
+    const work = yield* projections.getThreadRecords(
+      threadId,
+      ["runs", "messages", "subagents", "providerThreads"],
+      { messageRoles: ["user"], monitorNotificationsOnly: true },
+    );
+    if (
+      work.thread.lineage.relationshipToParent === "subagent" ||
+      work.thread.lineage.sideChat === true
+    ) {
+      return;
+    }
+    const { state, resultRun } = delegatedTaskProgress(work);
+    if (resultRun === undefined) return;
+    const captainId = yield* captainOf(work.thread, work.runs, resultRun.id);
+    if (captainId === undefined) {
+      unsettled.delete(threadId);
+      return;
+    }
+    const settled =
+      state === "result_available" &&
+      !work.runs.some(
+        (run) =>
+          !SETTLED_RUN_STATUSES.includes(run.status) &&
+          !(run.status === "queued" && run.queueHeld === true),
+      ) &&
+      !backgroundWorkHoldsCompletion(
+        (yield* projections.getThreadShell(threadId))?.pendingBackgroundTasks ?? [],
+      ) &&
+      !(yield* engine.delegatedTaskResultPending(threadId));
+    if (!settled) {
+      unsettled.add(threadId);
+      return;
+    }
+    unsettled.delete(threadId);
+    if (resultRun.status !== "completed" && resultRun.status !== "failed") return;
+    yield* hold(captainId, {
+      key: `${threadId}:result:${resultRun.id}`,
+      threadId,
+      title: work.thread.title,
+      kind: resultRun.status,
+      runId: resultRun.id,
+    });
   });
 
   const hold = Effect.fnUntraced(function* (captainId: ThreadId, notice: Notice) {
     const notices = held.get(captainId) ?? new Map<string, Notice>();
+    // A thread's latest result replaces the ones before it that the captain was not told yet.
+    if (notice.runId !== undefined) {
+      for (const [key, other] of notices) {
+        if (other.threadId === notice.threadId && other.runId !== undefined) notices.delete(key);
+      }
+    }
     if (!notices.has(notice.key) && notices.size >= MAX_HELD_NOTICES) {
       const [oldest] = notices.keys();
       if (oldest !== undefined) notices.delete(oldest);
@@ -247,7 +330,7 @@ const make = Effect.gen(function* () {
           return;
         }
         const asking = yield* projections.getThreadRecords(event.threadId, ["runs"]);
-        const captainId = yield* captainOf(event.threadId, asking.runs, event.runId);
+        const captainId = yield* captainOf(asking.thread, asking.runs, event.runId);
         if (captainId === undefined) return;
         yield* hold(captainId, {
           key: `${event.threadId}:question:${event.payload.id}`,
@@ -259,44 +342,22 @@ const make = Effect.gen(function* () {
         return;
       }
 
-      if (event.type !== "run.updated" || !ENDED_RUN_STATUSES.includes(event.payload.status)) {
+      if (event.type === "run.updated" && ENDED_RUN_STATUSES.includes(event.payload.status)) {
+        // The captain's own turn ended: send what was held while it ran.
+        if (held.has(event.threadId)) yield* scheduleFlush(event.threadId);
+        // Most runs are no captain's work, and this costs less than the full check.
+        const ended = yield* projections.getThreadRecords(event.threadId, ["runs"]);
+        if ((yield* captainOf(ended.thread, ended.runs, event.payload.id)) === undefined) {
+          unsettled.delete(event.threadId);
+          return;
+        }
+        yield* reportIfSettled(event.threadId);
         return;
       }
-      // The captain's own turn ended: send what was held while it ran.
-      if (held.has(event.threadId)) yield* scheduleFlush(event.threadId);
-
-      const ended = yield* projections.getThreadRecords(event.threadId, ["runs"]);
-      if (
-        ended.thread.lineage.relationshipToParent === "subagent" ||
-        ended.thread.lineage.sideChat === true ||
-        (yield* captainOf(event.threadId, ended.runs, event.payload.id)) === undefined
-      ) {
-        return;
+      // A watch, background task or subagent can end with no run left to end after it.
+      if (unsettled.has(event.threadId) && SETTLING_EVENT_TYPES.includes(event.type)) {
+        yield* reportIfSettled(event.threadId);
       }
-      // Report once the thread owes no more work, as t3_thread_wait decides it.
-      const work = yield* projections.getThreadRecords(
-        event.threadId,
-        ["runs", "messages", "subagents", "providerThreads"],
-        { messageRoles: ["user"], monitorNotificationsOnly: true },
-      );
-      const { state, resultRun } = delegatedTaskProgress(work);
-      if (
-        state !== "result_available" ||
-        resultRun === undefined ||
-        (resultRun.status !== "completed" && resultRun.status !== "failed") ||
-        (yield* engine.delegatedTaskResultPending(event.threadId))
-      ) {
-        return;
-      }
-      const captainId = yield* captainOf(event.threadId, work.runs, resultRun.id);
-      if (captainId === undefined) return;
-      yield* hold(captainId, {
-        key: `${event.threadId}:result:${resultRun.id}`,
-        threadId: event.threadId,
-        title: work.thread.title,
-        kind: resultRun.status,
-        runId: resultRun.id,
-      });
     },
     (effect, event) =>
       effect.pipe(
