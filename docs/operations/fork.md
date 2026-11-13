@@ -43,9 +43,10 @@ has no update feed and never updates itself.
 The fork follows upstream's stable releases (`vX.Y.Z`) only, never `upstream/main`, nightly or
 preview builds. The server checks every 6 hours whether the newest one is in this checkout.
 **Settings → About** says "Includes T3 Code vX.Y.Z" when it is, and "Update to vX.Y.Z" with an
-**Update** button when it is not. The button opens a thread in a new worktree on branch
-`update/vX.Y.Z`, cut from `main`, with a prompt naming the release. Pick the model and send it.
-Pressing the button again opens the same thread.
+**Update** button when it is not, and a vX.Y.Z update pill appears in the sidebar. The
+button and the pill open a thread in a new worktree on branch `update/vX.Y.Z`, cut from `main`,
+with a prompt naming the release. Pick the model and send it. Pressing either again opens the same
+thread.
 
 The agent, or you by hand, then:
 
