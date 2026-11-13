@@ -40,15 +40,29 @@ has no update feed and never updates itself.
 
 ## Update from upstream
 
-**Settings → About → Update from upstream** opens a thread in this checkout with these steps as its
-prompt. To do it by hand:
+The fork follows upstream's stable releases (`vX.Y.Z`) only, never `upstream/main`, nightly or
+preview builds. The server checks every 6 hours whether the newest one is in this checkout.
+**Settings → About** says "Includes T3 Code vX.Y.Z" when it is, and "Update to vX.Y.Z" with an
+**Update** button when it is not, and a vX.Y.Z update pill appears in the sidebar. The
+button and the pill open a thread in a new worktree on branch `update/vX.Y.Z`, cut from `main`,
+with a prompt naming the release. Pick the model and send it. Pressing either again opens the same
+thread.
 
-1. Commit or stash your work. Stop if `git status` is not clean.
-2. `git fetch upstream`, then `git merge upstream/main` into the branch you build from. Nothing new
-   means nothing to do.
-3. Resolve conflicts so the captain, the table above and the update button still work.
-4. `vp install`, then `vp run check:changed`. Fix what the merge broke.
-5. Build the DMG as above and open it.
-6. Quit T3 Code (Captain), drag the new app over the old one in Applications and start it again.
+The agent, or you by hand, then:
 
-Push to `origin` only when you mean to publish the merge.
+1. Adds the `upstream` remote (`https://github.com/pingdotgg/t3code`) if it is missing, and fetches
+   the tag: `git fetch upstream tag vX.Y.Z`.
+2. In the update worktree, runs `git merge vX.Y.Z` and resolves conflicts so the captain, the table
+   above and this update flow still work.
+3. Runs `vp install`, then `vp run check:changed`, and fixes what the merge broke.
+4. In the source checkout, stops and asks if `git status` is not clean, the branch is not `main`, or
+   `main` has commits the update branch lacks, so it cannot fast-forward
+   (`git merge-base --is-ancestor main update/vX.Y.Z` fails). It never stashes, switches branches or
+   rebases there. Otherwise it runs `git merge --ff-only update/vX.Y.Z` on `main`.
+5. Builds the DMG in the source checkout, not the worktree, as above, and opens it. The build
+   records the checkout's path for the next update, so it must be one that stays.
+6. Removes the update worktree: `git worktree remove <path>`.
+7. Tells you to quit T3 Code (Captain), drag the new app over the old one in Applications and start
+   it again.
+
+Never push. Publishing the merge to `origin` is your decision.

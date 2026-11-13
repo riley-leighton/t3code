@@ -210,6 +210,10 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
       label: "environment-data:orchestration:ensure-captain",
       tag: ORCHESTRATION_V2_WS_METHODS.ensureCaptain,
     }),
+    launchThread: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:orchestration:launch-thread",
+      tag: ORCHESTRATION_V2_WS_METHODS.launchThread,
+    }),
     turnItem: (target: {
       readonly environmentId: EnvironmentId;
       readonly input: OrchestrationV2GetTurnItemInput;

@@ -4329,6 +4329,17 @@ it("keeps the working header in place across worktree setup handoff", () => {
   });
   expect(settledRows.map((row) => row.kind)).toEqual(["message", "working", "worktree-setup"]);
 
+  // A thread launched with no message has nothing working once its worktree is ready.
+  const idleRows = deriveMessagesTimelineRows({
+    timelineEntries: [],
+    isWorking: false,
+    activeTurnStartedAt: null,
+    turnDiffSummaries: [],
+    supportsConversationRollback: false,
+    worktreeSetup: { ...snapshot, phase: "done", stages: [stage("agent", "done")] },
+  });
+  expect(idleRows.map((row) => row.kind)).toEqual(["worktree-setup"]);
+
   const finishedRows = deriveMessagesTimelineRows({
     timelineEntries: [userEntry],
     latestRun: liveTurn,

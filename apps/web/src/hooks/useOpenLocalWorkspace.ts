@@ -3,7 +3,7 @@ import {
   findProjectByPath,
   inferProjectTitleFromPath,
 } from "@t3tools/client-runtime/state/projects";
-import type { DesktopAppActivationRequest } from "@t3tools/contracts";
+import type { DesktopAppActivationRequest, ScopedProjectRef, ThreadId } from "@t3tools/contracts";
 
 import { handleDesktopAppActivationRequest } from "../desktopAppActivation";
 import { newProjectId } from "../lib/utils";
@@ -39,7 +39,12 @@ export function useOpenLocalWorkspace() {
 
   const open = (
     request: DesktopAppActivationRequest,
-    options?: { /** Composer text for the new thread. */ readonly prompt?: string },
+    options?: {
+      /** Opens the project's thread in place of a new draft. */
+      readonly openThread?: (
+        projectRef: ScopedProjectRef,
+      ) => Promise<{ readonly threadId: ThreadId } | null>;
+    },
   ) =>
     handleDesktopAppActivationRequest(request, {
       getTarget: () => {
@@ -93,7 +98,7 @@ export function useOpenLocalWorkspace() {
             input: { projectId: projectRef.projectId, archived: false },
           }).then((result) => reportProjectFailure("Failed to unarchive project", result));
         }
-        return openThread(projectRef, options);
+        return options?.openThread ? options.openThread(projectRef) : openThread(projectRef);
       },
     });
 

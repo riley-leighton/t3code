@@ -2229,9 +2229,11 @@ export function deriveMessagesTimelineRows(input: {
     input.worktreeSetup !== undefined &&
     worktreeSetupAgentStarted(input.worktreeSetup) &&
     input.latestRun?.startedAt != null;
+  // A finished setup bridges to its turn's working row; with no turn coming, nothing is working.
   const setupOwnsWorkingSlot =
     !setupHandedOff &&
-    (input.worktreeSetup?.phase === "running" || input.worktreeSetup?.phase === "done");
+    (input.worktreeSetup?.phase === "running" ||
+      (input.worktreeSetup?.phase === "done" && input.isWorking));
   if (input.worktreeSetup && (!setupHandedOff || input.worktreeSetup.phase !== "running")) {
     const setupRow = {
       kind: "worktree-setup",

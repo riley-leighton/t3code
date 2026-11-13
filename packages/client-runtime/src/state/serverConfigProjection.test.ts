@@ -8,7 +8,11 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { applyServerConfigProjection, reuseUnchanged } from "./serverConfigProjection.ts";
+import {
+  applyServerConfigProjection,
+  reuseUnchanged,
+  type ServerConfigProjection,
+} from "./serverConfigProjection.ts";
 
 const encodeSettings = Schema.encodeSync(ServerSettings);
 const decodeSettings = Schema.decodeSync(ServerSettings);
@@ -77,6 +81,28 @@ describe("applyServerConfigProjection settingsUpdated", () => {
       payload: { settings: decode() },
     } as ServerConfigStreamEvent);
     expect(Option.getOrThrow(next).config).toBe(Option.getOrThrow(current).config);
+  });
+});
+
+describe("applyServerConfigProjection forkUpdateUpdated", () => {
+  it("merges the fork update status, keeps it across snapshots, and clears it", () => {
+    const forkUpdate = { sourceDir: "/src/t3code", latestStableTag: "v0.1.10", merged: false };
+    const apply = (current: Option.Option<ServerConfigProjection>, event: unknown) =>
+      applyServerConfigProjection(current, event as ServerConfigStreamEvent);
+    const initial = Option.some({
+      config: { providers: [] } as unknown as ServerConfig,
+      latestEvent: {} as ServerConfigStreamEvent,
+      source: "live" as const,
+    });
+
+    const updated = apply(initial, { type: "forkUpdateUpdated", payload: { forkUpdate } });
+    expect(Option.getOrThrow(updated).config.forkUpdate).toEqual(forkUpdate);
+
+    const reconnected = apply(updated, { type: "snapshot", config: { providers: [] } });
+    expect(Option.getOrThrow(reconnected).config.forkUpdate).toEqual(forkUpdate);
+
+    const cleared = apply(reconnected, { type: "forkUpdateUpdated", payload: {} });
+    expect(Option.getOrThrow(cleared).config).not.toHaveProperty("forkUpdate");
   });
 });
 
