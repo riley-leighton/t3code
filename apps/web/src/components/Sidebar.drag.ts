@@ -151,8 +151,9 @@ export function createSidebarSortingStrategy(input: {
           : (input.activeOrder ?? target.activeOrder);
     const ranks = new Map(order.map((key, index) => [key, index]));
     const rank = ranks.get(active.key) ?? Number.POSITIVE_INFINITY;
+    // A nested row follows its captain, so the dragged row lands past the captain's whole block.
     const index = group.findIndex(
-      (item) => (ranks.get(item.key) ?? Number.POSITIVE_INFINITY) > rank,
+      (item) => (ranks.get(item.nestedUnder ?? item.key) ?? Number.POSITIVE_INFINITY) > rank,
     );
     group.splice(index < 0 ? group.length : index, 0, { ...active, section: target.section });
     const settledOrder = (

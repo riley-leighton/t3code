@@ -481,6 +481,10 @@ export const OrchestrationV2AppThread = Schema.Struct({
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+  /** The project's captain: its standing orchestrator thread. Absent on every other thread. */
+  captain: Schema.optional(Schema.Boolean),
+  /** The thread whose agent launched this one. A fork does not inherit it. */
+  launchedByThreadId: Schema.optional(ThreadId),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(
     Schema.Union([
@@ -546,6 +550,16 @@ export const isDelegatedAppThread = (
 ): boolean =>
   // MCP-launched threads store `delegatedFrom: null` at runtime, so check both absent shapes.
   thread.lineage.relationshipToParent === "subagent" || thread.delegatedFrom != null;
+
+/**
+ * A project's current captain is its newest captain thread that is neither archived nor deleted.
+ * Takes decoded threads and the wire shells clients hold, whose dates are strings.
+ */
+export const isCurrentCaptainThread = (thread: {
+  readonly captain?: boolean | undefined;
+  readonly archivedAt: unknown;
+  readonly deletedAt: unknown;
+}): boolean => thread.captain === true && thread.archivedAt === null && thread.deletedAt === null;
 
 /** Provider-native children cannot receive messages; T3 delegate_task children can. */
 export function isProviderNativeSubagentThread(
@@ -2160,6 +2174,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+  captain: Schema.optional(Schema.Boolean),
+  launchedByThreadId: Schema.optional(ThreadId),
   latestRunId: Schema.NullOr(RunId),
   latestRunRequestedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -3038,6 +3054,10 @@ export const OrchestrationV2Command = Schema.Union([
     linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
     /** Only the server sets this, with `linkOrigin`, for a linked environment's delegated task. */
     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+    /** Only the server sets this, when it creates a project's captain. */
+    captain: Schema.optional(Schema.Boolean),
+    /** Only the server sets this, when a thread's agent launches another thread. */
+    launchedByThreadId: Schema.optional(ThreadId),
     importedNativeThread: Schema.optional(
       Schema.Struct({
         ref: Schema.Struct({
@@ -3733,6 +3753,7 @@ export const ORCHESTRATION_V2_WS_METHODS = {
   forceStopThread: "orchestration.forceStopThread",
   getTurnItem: "orchestration.getTurnItem",
   launchThread: "orchestration.launchThread",
+  ensureCaptain: "orchestration.ensureCaptain",
   subscribeShell: "orchestration.subscribeShell",
   subscribeThread: "orchestration.subscribeThread",
   subscribeCommandOutput: "orchestration.subscribeCommandOutput",
@@ -3815,6 +3836,23 @@ export const OrchestrationV2ThreadLaunchResult = Schema.Struct({
   sequence: Schema.optionalKey(NonNegativeInt),
 });
 export type OrchestrationV2ThreadLaunchResult = typeof OrchestrationV2ThreadLaunchResult.Type;
+
+/** The model and modes apply only when this call creates the captain. */
+export const OrchestrationV2EnsureCaptainInput = Schema.Struct({
+  commandId: CommandId,
+  creationSource: Schema.optional(OrchestrationV2CreationSource),
+  projectId: ProjectId,
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  interactionMode: ProviderInteractionMode,
+});
+export type OrchestrationV2EnsureCaptainInput = typeof OrchestrationV2EnsureCaptainInput.Type;
+
+export const OrchestrationV2EnsureCaptainResult = Schema.Struct({
+  threadId: ThreadId,
+  created: Schema.Boolean,
+});
+export type OrchestrationV2EnsureCaptainResult = typeof OrchestrationV2EnsureCaptainResult.Type;
 
 export const OrchestrationV2DispatchCommandResult = Schema.Struct({
   sequence: NonNegativeInt,
@@ -4447,6 +4485,10 @@ export const OrchestrationV2RpcSchemas = {
   launchThread: {
     input: OrchestrationV2ThreadLaunchInput,
     output: OrchestrationV2ThreadLaunchResult,
+  },
+  ensureCaptain: {
+    input: OrchestrationV2EnsureCaptainInput,
+    output: OrchestrationV2EnsureCaptainResult,
   },
   subscribeShell: {
     input: OrchestrationV2SubscribeShellInput,

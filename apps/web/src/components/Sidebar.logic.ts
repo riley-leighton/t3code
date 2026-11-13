@@ -218,8 +218,58 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
 }
 
 export type SidebarListItem =
-  | { readonly kind: "thread"; readonly key: string; readonly section: SidebarSection }
+  | {
+      readonly kind: "thread";
+      readonly key: string;
+      readonly section: SidebarSection;
+      /** The captain's row this one sits under. Such a row keeps its place and is never dragged. */
+      readonly nestedUnder?: string;
+    }
   | { readonly kind: "marker"; readonly marker: SidebarListMarker };
+
+/**
+ * Moves the unfinished threads a pinned captain launched out of the inbox and the working shelf,
+ * to sit under that captain. Snoozed and settled ones keep their shelves.
+ */
+export function nestCaptainThreads<
+  T extends {
+    readonly environmentId: EnvironmentId;
+    readonly id: ThreadId;
+    readonly captain?: boolean | undefined;
+    readonly launchedByThreadId?: ThreadId | undefined;
+  },
+>(input: {
+  readonly pinned: readonly T[];
+  readonly active: readonly T[];
+  readonly working: readonly T[];
+}): {
+  readonly active: readonly T[];
+  readonly working: readonly T[];
+  /** Keyed by the captain's scoped thread key. */
+  readonly nestedByCaptain: ReadonlyMap<string, readonly T[]>;
+} {
+  const nestedByCaptain = new Map<string, T[]>();
+  for (const thread of input.pinned) {
+    if (thread.captain === true) {
+      nestedByCaptain.set(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)), []);
+    }
+  }
+  if (nestedByCaptain.size === 0) return { ...input, nestedByCaptain };
+  const keep = (thread: T) => {
+    const nested =
+      thread.launchedByThreadId === undefined
+        ? undefined
+        : nestedByCaptain.get(
+            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.launchedByThreadId)),
+          );
+    nested?.push(thread);
+    return nested === undefined;
+  };
+  // Inbox first: those are the ones waiting on someone.
+  const active = input.active.filter(keep);
+  const working = input.working.filter(keep);
+  return { active, working, nestedByCaptain };
+}
 
 export function sidebarListItemId(item: SidebarListItem): string {
   return item.kind === "thread" ? item.key : sidebarMarkerId(item.marker);
@@ -251,7 +301,9 @@ export function resolveSidebarDropTarget(
 ): SidebarDropTarget | null {
   const activeIndex = items.findIndex((item) => sidebarListItemId(item) === activeKey);
   const overIndex = items.findIndex((item) => sidebarListItemId(item) === overId);
-  if (activeIndex === -1 || overIndex === -1 || items[activeIndex]?.kind !== "thread") return null;
+  const dragged = items[activeIndex];
+  if (activeIndex === -1 || overIndex === -1 || dragged?.kind !== "thread") return null;
+  if (dragged.nestedUnder !== undefined) return null;
   const moved = items.filter((_, index) => index !== activeIndex);
   moved.splice(overIndex, 0, items[activeIndex]!);
   const section = sectionAtSidebarSlot(moved, overIndex);
@@ -268,7 +320,8 @@ export function resolveSidebarDropTarget(
         item.marker === "settled-header"
       )
         break;
-    } else if (currentSection === "pinned") pinnedOrder.push(item.key);
+    } else if (item.nestedUnder !== undefined) continue;
+    else if (currentSection === "pinned") pinnedOrder.push(item.key);
     else activeOrder.push(item.key);
   }
   return { section, pinnedOrder, activeOrder };

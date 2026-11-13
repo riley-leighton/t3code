@@ -4,6 +4,7 @@ import * as TerminalManager from "../terminal/Manager.ts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   CommandId,
+  isCurrentCaptainThread,
   type ChatAttachment,
   type MessageId,
   type ModelSelection,
@@ -50,6 +51,7 @@ import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import * as EventSink from "./EventSink.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import type * as Orchestrator from "./Orchestrator.ts";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
@@ -105,6 +107,10 @@ export interface ThreadLaunchInput {
   readonly linkOrigin?: OrchestrationV2LinkOrigin;
   /** The parent there, when that environment's agent delegated this as a task. */
   readonly delegatedFrom?: OrchestrationV2DelegatedFrom;
+  /** Creates the thread as its project's captain. */
+  readonly captain?: boolean;
+  /** The thread whose agent asked for this launch. */
+  readonly launchedByThreadId?: ThreadId;
 }
 
 type PreparationInput = Pick<
@@ -113,6 +119,27 @@ type PreparationInput = Pick<
 > & {
   readonly reusedWorktree?: { readonly baseRef: string };
 };
+
+/** Names the project, since pinned captains of several projects sit together in the sidebar. */
+const captainThreadTitle = (projectTitle: string | undefined) =>
+  projectTitle === undefined ? "Captain" : `${projectTitle} captain`;
+
+export type CaptainEnsureInput = Pick<
+  ThreadLaunchInput,
+  | "commandId"
+  | "projectId"
+  | "modelSelection"
+  | "runtimeMode"
+  | "interactionMode"
+  | "createdBy"
+  | "creationSource"
+>;
+
+export interface CaptainEnsureResult {
+  readonly threadId: ThreadId;
+  /** False when the project already had a captain; the input's model and modes were not applied. */
+  readonly created: boolean;
+}
 
 export interface ThreadLaunchPreparationInput {
   readonly commandId: CommandId;
@@ -133,6 +160,7 @@ export class ThreadLaunchError extends Schema.TaggedError<ThreadLaunchError>()(
   {
     operation: Schema.Literals([
       "resolve-project",
+      "find-captain",
       "read-receipt",
       "generate-metadata",
       "provision-worktree",
@@ -222,6 +250,16 @@ export class ThreadLaunchService extends Context.Service<
       | ThreadManagement.ThreadManagementProviderInstanceDisabledError
     >;
     readonly prepareRun: (input: ThreadLaunchPreparationInput) => Effect.Effect<void>;
+    /**
+     * Returns the project's captain, creating one in the project folder when it has none.
+     * Archiving a captain retires it, so the next call starts a fresh one.
+     */
+    readonly ensureCaptain: (
+      input: CaptainEnsureInput,
+    ) => Effect.Effect<
+      CaptainEnsureResult,
+      ThreadLaunchError | ThreadManagement.ThreadManagementProviderInstanceDisabledError
+    >;
   }
 >()("t3/orchestration-v2/ThreadLaunchService") {}
 
@@ -1073,6 +1111,10 @@ const make = Effect.gen(function* () {
                 ...(input.delegatedFrom === undefined
                   ? {}
                   : { delegatedFrom: input.delegatedFrom }),
+                ...(input.captain === true ? { captain: true } : {}),
+                ...(input.launchedByThreadId === undefined
+                  ? {}
+                  : { launchedByThreadId: input.launchedByThreadId }),
                 createdBy: input.createdBy,
                 creationSource: input.creationSource,
               });
@@ -1289,7 +1331,56 @@ const make = Effect.gen(function* () {
     );
   });
 
-  return ThreadLaunchService.of({ launch, checkWorktreeBase, retryPreparation, prepareRun });
+  const captainLocks = yield* KeyedLock.make<ProjectId>();
+  const ensureCaptain: ThreadLaunchService["Service"]["ensureCaptain"] = Effect.fn(
+    "ThreadLaunchService.ensureCaptain",
+  )(function* (input) {
+    yield* Effect.annotateCurrentSpan({ "orchestration_v2.project_id": input.projectId });
+    // Two clients opening the captain at once must not both find none and create one each.
+    return yield* captainLocks.withLock(
+      input.projectId,
+      Effect.gen(function* () {
+        const [existing] = (yield* threads
+          .listProjectThreads({ projectId: input.projectId, includeSubagents: false })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ThreadLaunchError({
+                  operation: "find-captain",
+                  commandId: input.commandId,
+                  projectId: input.projectId,
+                  cause,
+                }),
+            ),
+          ))
+          .filter(isCurrentCaptainThread)
+          .toSorted(
+            (left, right) =>
+              DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt) ||
+              right.id.localeCompare(left.id),
+          );
+        if (existing !== undefined) return { threadId: existing.id, created: false };
+        const project = yield* projects
+          .getById(input.projectId)
+          .pipe(Effect.orElseSucceed(() => Option.none()));
+        const launched = yield* launch({
+          ...input,
+          title: captainThreadTitle(Option.getOrUndefined(project)?.title),
+          workspaceStrategy: { type: "root" },
+          captain: true,
+        });
+        return { threadId: launched.threadId, created: true };
+      }),
+    );
+  });
+
+  return ThreadLaunchService.of({
+    launch,
+    checkWorktreeBase,
+    retryPreparation,
+    prepareRun,
+    ensureCaptain,
+  });
 });
 
 export const layer = Layer.effect(ThreadLaunchService, make);

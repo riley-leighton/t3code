@@ -1786,6 +1786,86 @@ it.effect("bounds concurrent first launches to one thread per command", () =>
   }),
 );
 
+it.effect("keeps one captain per project and starts a fresh one once it is archived", () => {
+  const harness = makeHarness();
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const ensure = (command: string) =>
+      launches.ensureCaptain({
+        commandId: CommandId.make(command),
+        projectId,
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        createdBy: "user",
+        creationSource: "web",
+      });
+    const [first, second] = yield* Effect.all(
+      [ensure("command:captain:first"), ensure("command:captain:second")],
+      { concurrency: "unbounded" },
+    );
+    assert.equal(first.threadId, second.threadId);
+    assert.deepEqual([first.created, second.created].toSorted(), [false, true]);
+    const [shell, ...others] = yield* threads.listProjectThreads({
+      projectId,
+      includeSubagents: false,
+    });
+    assert.deepEqual(others, []);
+    assert.equal(shell?.captain, true);
+    assert.equal(shell?.title, `${project.title} captain`);
+    assert.isNotNull(shell?.pinnedAt ?? null);
+    assert.equal(shell?.worktreePath, null);
+
+    yield* threads.dispatch({
+      type: "thread.archive",
+      commandId: CommandId.make("command:captain:archive"),
+      threadId: first.threadId,
+    });
+    const replacement = yield* ensure("command:captain:third");
+    assert.equal(replacement.created, true);
+    assert.notEqual(replacement.threadId, first.threadId);
+    assert.deepEqual(yield* ensure("command:captain:fourth"), {
+      threadId: replacement.threadId,
+      created: false,
+    });
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("records the thread whose agent launched a thread", () => {
+  const harness = makeHarness();
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const captain = yield* launches.ensureCaptain({
+      commandId: CommandId.make("command:launcher:captain"),
+      projectId,
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* launches.launch({
+      ...launchInput({ command: "command:launcher:child", thread: "thread:launcher:child" }),
+      launchedByThreadId: captain.threadId,
+    });
+    yield* launches.launch(
+      launchInput({ command: "command:launcher:own", thread: "thread:launcher:own" }),
+    );
+
+    const shells = yield* threads.listProjectThreads({ projectId, includeSubagents: false });
+    assert.deepEqual(
+      shells.map((shell) => [shell.id, shell.launchedByThreadId]).toSorted(),
+      [
+        [captain.threadId, undefined],
+        [ThreadId.make("thread:launcher:child"), captain.threadId],
+        [ThreadId.make("thread:launcher:own"), undefined],
+      ].toSorted(),
+    );
+  }).pipe(Effect.provide(harness.layer));
+});
+
 it.effect("does not let a failing same-command caller strand a concurrent durable launch", () =>
   Effect.gen(function* () {
     const setupEntered = yield* Deferred.make<void>();
@@ -2075,6 +2155,7 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch 
         checkWorktreeBase: launches.checkWorktreeBase,
         retryPreparation: launches.retryPreparation,
         prepareRun: launches.prepareRun,
+        ensureCaptain: launches.ensureCaptain,
       }),
       Effect.flip,
     );

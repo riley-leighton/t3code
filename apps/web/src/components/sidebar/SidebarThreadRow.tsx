@@ -49,6 +49,7 @@ import {
   PinIcon,
   PinOffIcon,
   ShieldQuestionIcon,
+  ShipWheelIcon,
   SquarePenIcon,
   TerminalIcon,
   Undo2Icon,
@@ -1115,6 +1116,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       <TooltipPopup side="top">Unsent draft</TooltipPopup>
     </Tooltip>
   ) : null;
+  const captainIndicator =
+    thread.captain === true ? (
+      <ShipWheelIcon
+        role="img"
+        aria-label="Captain"
+        className="size-3.5 shrink-0 text-muted-foreground"
+      />
+    ) : null;
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
   const pinIndicator = showPin ? (
@@ -1274,6 +1283,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 </span>
               )}
               {draftIndicator}
+              {captainIndicator}
               {title}
               {multiline ? titleLineIcons : null}
               {pinIndicator}
@@ -1458,6 +1468,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {props.project ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
+              {captainIndicator}
               {/* Left of the status slot, the pin would slide when hover swaps the
                 label for the wider row controls. */}
               {pinIndicator}

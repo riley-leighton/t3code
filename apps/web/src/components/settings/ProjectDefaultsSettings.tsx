@@ -27,6 +27,7 @@ import { toastManager } from "../ui/toast";
 import { Switch } from "../ui/switch";
 import { resolveDefaultModelSettingsPresentation } from "./ProjectDefaultsSettings.logic";
 import type { ProjectSettingsCategory } from "./ProjectSettingsPanel";
+import { ScopedSwitch } from "./ScopedSwitch";
 import { searchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 import {
@@ -97,6 +98,15 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
     providers,
     fallbackSelection?.instanceId,
     fallbackSelection?.model,
+  );
+  const mixedCaptainModel = useScopedSettingsMixed(["captainModelSelection"]);
+  const captainSelection = settings.captainModelSelection ?? selection;
+  const captainEntry = entries.find((entry) => entry.instanceId === captainSelection?.instanceId);
+  const captainModelOptions = getCustomModelOptionsByInstance(
+    settings,
+    providers,
+    captainSelection?.instanceId,
+    captainSelection?.model,
   );
   const mixedPermissions = useScopedSettingsMixed(["defaultRuntimeMode"]);
   const PermissionIcon = runtimeModeConfig[settings.defaultRuntimeMode].icon;
@@ -318,6 +328,97 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
     />
   ) : null;
 
+  const captainRows = !isProjectScope ? (
+    <>
+      <SettingsRow
+        serverScoped
+        settingKeys={["captainModelSelection"]}
+        mixed={mixedCaptainModel}
+        {...searchableSetting("captain-model")}
+        description="The model a project's captain starts on. A captain that already exists keeps its own."
+        resetAction={
+          mixedCaptainModel || settings.captainModelSelection !== null ? (
+            <SettingResetButton
+              label="captain model"
+              onClick={() => updateSettings({ captainModelSelection: null })}
+            />
+          ) : null
+        }
+        control={
+          captainSelection ? (
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+              <ProviderModelPicker
+                environmentId={representative?.environmentId ?? null}
+                activeInstanceId={captainSelection.instanceId}
+                model={captainSelection.model}
+                lockedProvider={null}
+                instanceEntries={entries}
+                modelOptionsByInstance={captainModelOptions}
+                triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
+                triggerAriaLabel="Captain model"
+                {...(mixedCaptainModel
+                  ? { triggerLabel: "Mixed" }
+                  : settings.captainModelSelection === null
+                    ? { triggerLabel: "Project default" }
+                    : {})}
+                getModelDisabledReason={modelDisabledReason}
+                onInstanceModelChange={(instanceId, model) => {
+                  const reason = modelDisabledReason(instanceId, model);
+                  if (reason) {
+                    toastManager.add({
+                      type: "error",
+                      title: "Captain model not saved",
+                      description: reason,
+                    });
+                    return;
+                  }
+                  updateSettings({
+                    captainModelSelection: createModelSelection(instanceId, model),
+                  });
+                }}
+              />
+              {settings.captainModelSelection !== null && captainEntry && !mixedCaptainModel ? (
+                <TraitsPicker
+                  provider={captainEntry.driverKind}
+                  models={captainEntry.models}
+                  model={captainSelection.model}
+                  modelOptions={captainSelection.options ?? []}
+                  allowPromptInjectedEffort={false}
+                  triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
+                  onModelOptionsChange={(options) =>
+                    updateSettings({
+                      captainModelSelection: createModelSelection(
+                        captainSelection.instanceId,
+                        captainSelection.model,
+                        options,
+                      ),
+                    })
+                  }
+                />
+              ) : null}
+            </div>
+          ) : (
+            <span className="text-sm text-muted-foreground">No providers available</span>
+          )
+        }
+      />
+      <SettingsRow
+        serverScoped
+        settingKeys={["captainWakes"]}
+        {...searchableSetting("captain-wakes")}
+        description="Start a captain turn when a thread it started or messaged finishes, fails or asks a question. Each wake-up uses the captain's model."
+        control={
+          <ScopedSwitch
+            settingKeys={["captainWakes"]}
+            checked={settings.captainWakes}
+            onCheckedChange={(checked) => updateSettings({ captainWakes: Boolean(checked) })}
+            aria-label="Captain wake-ups"
+          />
+        }
+      />
+    </>
+  ) : null;
+
   return (
     <SettingsSection
       id={category === "source-control" ? "source-control-defaults" : "project-defaults"}
@@ -406,6 +507,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
             }
           />
           {workspaceRow}
+          {captainRows}
         </>
       ) : (
         <>

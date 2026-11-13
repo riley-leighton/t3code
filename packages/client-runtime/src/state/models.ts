@@ -156,6 +156,10 @@ export interface EnvironmentThreadShell {
   readonly linkOrigin: OrchestrationV2ThreadShell["linkOrigin"] | null;
   /** The thread in a linked environment that delegated this one, if one did. */
   readonly delegatedFrom: OrchestrationV2ThreadShell["delegatedFrom"] | null;
+  /** The project's captain: its standing orchestrator thread. */
+  readonly captain?: boolean;
+  /** The thread whose agent launched this one. */
+  readonly launchedByThreadId?: OrchestrationV2ThreadShell["launchedByThreadId"];
   readonly activeProviderThreadId: OrchestrationV2ThreadShell["activeProviderThreadId"];
   readonly latestRun: ThreadRunSummary | null;
   readonly runtime: ThreadRuntimeSummary | null;
@@ -305,6 +309,10 @@ export function presentThreadShell(
     forkedFrom: thread.forkedFrom,
     linkOrigin: thread.linkOrigin ?? null,
     delegatedFrom: thread.delegatedFrom ?? null,
+    ...(thread.captain === true ? { captain: true } : {}),
+    ...(thread.launchedByThreadId === undefined
+      ? {}
+      : { launchedByThreadId: thread.launchedByThreadId }),
     activeProviderThreadId: thread.activeProviderThreadId,
     latestRun,
     runtime,

@@ -2369,6 +2369,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             hasDeviceTools,
             orchestrationDelivered: delivered.orchestration,
             deviceInstructionsDelivered: delivered.device,
+            captain: turnInput.appThread.captain === true,
           });
           const userText =
             interrupted === undefined

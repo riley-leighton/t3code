@@ -332,6 +332,17 @@ it.effect("waitForThread can wait past an ended run for the thread's delegated w
     expect(
       yield* service.waitForThread({ projectId, threadId, runId, timeoutMs: 60 * 60 * 1_000 }),
     ).not.toHaveProperty("resultRun");
+    // Only a wait that names its waiter records the result as handed to that thread.
+    const waiterThreadId = ThreadId.make("thread:waiter");
+    expect(yield* service.waitDeliveredRun(waiterThreadId, threadId)).toBeUndefined();
+    yield* service.waitForThread({
+      projectId,
+      threadId,
+      runId,
+      timeoutMs: 60 * 60 * 1_000,
+      waiterThreadId,
+    });
+    expect(yield* service.waitDeliveredRun(waiterThreadId, threadId)).toBe(runId);
 
     const fiber = yield* service
       .waitForThread({

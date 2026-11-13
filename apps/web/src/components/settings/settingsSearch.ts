@@ -299,6 +299,22 @@ export const SETTINGS_SEARCH_ITEMS = [
     environmentOnly: true,
   },
   {
+    id: "captain-model",
+    title: "Captain model",
+    to: "/settings/threads",
+    scope: "environment-defaults",
+    searchTerms: ["captain orchestrator project provider new"],
+    environmentOnly: true,
+  },
+  {
+    id: "captain-wakes",
+    title: "Captain wake-ups",
+    to: "/settings/threads",
+    scope: "environment-defaults",
+    searchTerms: ["captain orchestrator report back finished automatic turn wake"],
+    environmentOnly: true,
+  },
+  {
     id: "default-permissions",
     title: "Permissions",
     to: "/settings/threads",
@@ -872,6 +888,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/about",
     searchTerms: ["release channel stable latest nightly prerelease"],
     releaseChannelOnly: true,
+  },
+  {
+    id: "fork-update",
+    title: "Fork updates",
+    to: "/settings/about",
+    searchTerms: ["upstream merge rebuild captain fork source update upgrade"],
+    desktopOnly: true,
   },
   {
     id: "cli-command",

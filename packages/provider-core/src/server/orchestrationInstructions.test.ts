@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 
 import {
+  T3_CODE_CAPTAIN_INSTRUCTIONS,
   T3_CODE_DEVICE_TOOL_INSTRUCTIONS,
   T3_CODE_DEVICE_TOOL_INSTRUCTIONS_WITH_TOOL_SEARCH,
   T3_CODE_ORCHESTRATION_INSTRUCTIONS,
@@ -81,5 +82,38 @@ describe("T3 device instructions", () => {
       "Again.",
     );
     assert.notInclude(t3AcpPromptWithInstructions({ prompt: "Hi.", state }), "## T3 Code devices");
+  });
+});
+
+describe("T3 captain instructions", () => {
+  it("reach only a captain thread, after the orchestration rules they override", () => {
+    const captain = t3OrchestrationSystemPrompt(true, true, true) ?? "";
+    assert.isBelow(
+      captain.indexOf(T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim()),
+      captain.indexOf(T3_CODE_CAPTAIN_INSTRUCTIONS),
+    );
+    assert.include(captain, T3_CODE_DEVICE_TOOL_INSTRUCTIONS);
+    assert.notInclude(t3OrchestrationSystemPrompt(true, true), "## T3 Code captain");
+    assert.isUndefined(t3OrchestrationSystemPrompt(false, false, true));
+
+    const firstRun = (captain: boolean, orchestrationDelivered: boolean) =>
+      t3OrchestrationPrompt({
+        prompt: "Where do things stand?",
+        hasT3Mcp: true,
+        hasDeviceTools: false,
+        orchestrationDelivered,
+        deviceInstructionsDelivered: false,
+        captain,
+      });
+    assert.include(firstRun(true, false), T3_CODE_CAPTAIN_INSTRUCTIONS);
+    assert.notInclude(firstRun(false, false), "## T3 Code captain");
+    assert.equal(firstRun(true, true), "Where do things stand?");
+
+    const state = { interactionMode: "default", hasT3Mcp: true, hasDeviceTools: false } as const;
+    assert.include(
+      t3AcpPromptWithInstructions({ prompt: "Hi.", state: { ...state, captain: true } }),
+      T3_CODE_CAPTAIN_INSTRUCTIONS,
+    );
+    assert.notInclude(t3AcpPromptWithInstructions({ prompt: "Hi.", state }), "## T3 Code captain");
   });
 });

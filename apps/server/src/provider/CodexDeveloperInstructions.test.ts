@@ -15,7 +15,9 @@ describe("buildCodexAdditionalContext", () => {
     it.each([undefined, { browser: true, device: true }])(
       "keeps every entry within Codex's per-entry cap with tools %j",
       (availability) => {
-        const context = buildCodexAdditionalContext(runtime, availability);
+        // A captain carries every entry an ordinary thread does, plus its own.
+        const context = buildCodexAdditionalContext(runtime, availability, true);
+        NodeAssert.ok("t3_code_orchestration_captain" in context);
 
         for (const [key, entry] of Object.entries(context)) {
           // Codex counts ceil(UTF-8 bytes / 4) tokens, excluding keys and wrappers.

@@ -2128,6 +2128,33 @@ export const layerWsRpc = (
                 ),
             ),
           ),
+        [ORCHESTRATION_V2_WS_METHODS.ensureCaptain]: (input) =>
+          startup
+            .enqueueCommand(
+              threadLaunch.ensureCaptain({
+                commandId: input.commandId,
+                projectId: input.projectId,
+                modelSelection: input.modelSelection,
+                runtimeMode: input.runtimeMode,
+                interactionMode: input.interactionMode,
+                createdBy: "user",
+                creationSource: input.creationSource ?? "web",
+              }),
+            )
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationV2ThreadLaunchError({
+                    commandId: input.commandId,
+                    projectId: input.projectId,
+                    message:
+                      cause._tag === "ThreadManagementProviderInstanceDisabledError"
+                        ? cause.message
+                        : "Failed to open the captain",
+                    cause,
+                  }),
+              ),
+            ),
         [ORCHESTRATION_V2_WS_METHODS.launchThread]: (input) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": input.commandId,

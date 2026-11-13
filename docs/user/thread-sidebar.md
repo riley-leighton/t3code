@@ -57,6 +57,36 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## Ask the project's captain
+
+Each project has a captain: one standing thread that coordinates the project's work. Ask it
+what is in flight, or hand it a goal and it starts and steers the threads that do the work.
+You can still start your own threads at any time.
+
+On web and desktop, open it from the command palette with **Open the captain of** the current
+project, or with the ship's wheel button on a project's folder when you
+[group threads by project](#group-threads-by-project-beta). The first time, T3 Code creates the
+captain on your captain model, or else the project's default model, in the project's main
+checkout. It starts pinned, which keeps it at the top of the sidebar and stops it from settling.
+
+The captain's row carries a ship's wheel. While it is pinned, the threads it starts sit
+indented under it, in place of the inbox and the Working shelf, until they settle or you snooze
+them. They stay where they are when you drag other rows.
+
+The threads a captain starts are ordinary threads. When one finishes, fails or asks a
+question, T3 Code starts a captain turn so it can take the next step or tell you. The same goes
+for a thread the captain sends a message to. Updates that arrive while the captain is busy reach
+it together once its turn ends, and a turn you start yourself in one of those threads does not
+report to it. After 20 wake-ups in a row with no message from you, they pause until you write
+to the captain.
+
+Each wake-up is a turn on the captain's model. Turn them off with **Settings → Threads →
+Captain wake-ups**, and pick the model new captains start on with **Captain model** in the same
+place. An existing captain keeps its model; change it in the captain's composer.
+
+To start over with a fresh captain, archive the current one. Opening the captain again creates
+a new one, and the old conversation stays in the archive.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.

@@ -83,8 +83,15 @@ export function withCreationProvenance(
 ): OrchestrationV2Command {
   switch (command.type) {
     case "thread.create": {
-      // Only the server stamps a link's origin, so a client cannot set one.
-      const { linkOrigin: _linkOrigin, delegatedFrom: _delegatedFrom, ...rest } = command;
+      // Only the server stamps a link's origin, names a captain or records a launcher, so a client
+      // cannot set them.
+      const {
+        linkOrigin: _linkOrigin,
+        delegatedFrom: _delegatedFrom,
+        captain: _captain,
+        launchedByThreadId: _launchedByThreadId,
+        ...rest
+      } = command;
       return { ...rest, ...provenance };
     }
     case "message.dispatch":
@@ -179,6 +186,8 @@ export interface ThreadManagementWaitInput {
    * completion delivery will wake it again, as a delegated task's result does.
    */
   readonly untilDelegatedWorkSettled?: boolean;
+  /** The thread whose agent is waiting. A settled result then counts as delivered to it. */
+  readonly waiterThreadId?: ThreadId;
 }
 
 export interface ThreadManagementWaitResult {
@@ -451,6 +460,11 @@ export interface ThreadManagementServiceShape {
   readonly waitForThread: (
     input: ThreadManagementWaitInput,
   ) => Effect.Effect<ThreadManagementWaitResult, ThreadManagementError>;
+  /** The run whose settled result a wait last handed to this waiter. Kept in memory. */
+  readonly waitDeliveredRun: (
+    waiterThreadId: ThreadId,
+    threadId: ThreadId,
+  ) => Effect.Effect<RunId | undefined>;
   /** Waits for the agent's run and automatic follow-ups before settling.
    * A new user turn or an unsuccessful ending leaves the thread active. */
   readonly settleAfterRun: (input: {
@@ -935,7 +949,7 @@ const make = Effect.gen(function* () {
     return { dispatch: dispatched, projection, message, run, turnItem, delivery };
   });
 
-  const waitForThread: ThreadManagementServiceShape["waitForThread"] = Effect.fn(
+  const waitForRun: ThreadManagementServiceShape["waitForThread"] = Effect.fn(
     "ThreadManagementService.waitForThread",
   )(function* (input) {
     const loadError = (cause: unknown) =>
@@ -1071,6 +1085,19 @@ const make = Effect.gen(function* () {
     // happened, so only a still-active run counts as timed out.
     return settledResult(yield* evaluate((yield* getProjectThreadRecords(input, ["runs"])).runs));
   });
+
+  // One entry per waiter and thread, so the map stays as small as the set of threads.
+  const waitDeliveries = new Map<string, RunId>();
+  const waitForThread: ThreadManagementServiceShape["waitForThread"] = (input) =>
+    waitForRun(input).pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          const delivered = result.resultRun ?? result.run;
+          if (input.waiterThreadId === undefined || result.timedOut || delivered === null) return;
+          waitDeliveries.set(`${input.waiterThreadId}:${input.threadId}`, delivered.id);
+        }),
+      ),
+    );
 
   const settleAfterRun: ThreadManagementServiceShape["settleAfterRun"] = Effect.fn(
     "orchestrationV2.threadManagement.settleAfterRun",
@@ -1661,6 +1688,10 @@ const make = Effect.gen(function* () {
     isProviderInstanceEnabledForProject,
     hasReceipt,
     waitForThread,
+    waitDeliveredRun: Effect.fn("ThreadManagementService.waitDeliveredRun")(
+      (waiterThreadId, threadId) =>
+        Effect.sync(() => waitDeliveries.get(`${waiterThreadId}:${threadId}`)),
+    ),
     settleAfterRun,
     settleThread,
     interruptThread,

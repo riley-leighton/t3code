@@ -22,6 +22,7 @@ import {
   shouldRecedeSidebarThread,
   sortInboxThreadsByReturn,
   resolveSidebarDropTarget,
+  nestCaptainThreads,
   planSidebarThreadDrop,
   resolveSidebarReorderableThreadKeys,
   sortPinnedThreadsForSidebar,
@@ -1099,6 +1100,53 @@ describe("Working shelf (beta)", () => {
     });
   });
 
+  describe("captain nesting", () => {
+    const shell = (
+      id: string,
+      extra: { captain?: boolean; launchedBy?: string; environmentId?: EnvironmentId } = {},
+    ) => ({
+      environmentId: extra.environmentId ?? localEnvironmentId,
+      id: ThreadId.make(id),
+      ...(extra.captain === true ? { captain: true } : {}),
+      ...(extra.launchedBy === undefined
+        ? {}
+        : { launchedByThreadId: ThreadId.make(extra.launchedBy) }),
+    });
+    const captain = shell("captain", { captain: true });
+    const captainKey = scopedThreadKey(scopeThreadRef(localEnvironmentId, captain.id));
+
+    it("moves a pinned captain's inbox and working threads under it, inbox first", () => {
+      const asked = shell("asked", { launchedBy: "captain" });
+      const running = shell("running", { launchedBy: "captain" });
+      const mine = shell("mine");
+      const grandchild = shell("grandchild", { launchedBy: "running" });
+      const elsewhere = shell("elsewhere", {
+        launchedBy: "captain",
+        environmentId: EnvironmentId.make("environment-other"),
+      });
+
+      const result = nestCaptainThreads({
+        pinned: [captain, shell("pinned")],
+        active: [mine, asked, elsewhere],
+        working: [running, grandchild],
+      });
+
+      expect(result.active).toEqual([mine, elsewhere]);
+      expect(result.working).toEqual([grandchild]);
+      expect([...result.nestedByCaptain]).toEqual([[captainKey, [asked, running]]]);
+    });
+
+    it("leaves the lists alone when the captain is not pinned", () => {
+      const child = shell("child", { launchedBy: "captain" });
+      const input = { pinned: [shell("pinned")], active: [captain, child], working: [] };
+
+      const result = nestCaptainThreads(input);
+
+      expect(result.active).toBe(input.active);
+      expect(result.nestedByCaptain.size).toBe(0);
+    });
+  });
+
   describe("dragging", () => {
     const marker = (name: SidebarListMarker): SidebarListItem => ({ kind: "marker", marker: name });
     const row = (key: string, section: SidebarSection): SidebarListItem => ({
@@ -1117,6 +1165,25 @@ describe("Working shelf (beta)", () => {
       marker("settled-header"),
       row("s1", "settled"),
     ];
+
+    it("leaves a captain's nested rows where they are", () => {
+      const nested: readonly SidebarListItem[] = [
+        marker("pinned-header"),
+        row("captain", "pinned"),
+        { kind: "thread", key: "child", section: "pinned", nestedUnder: "captain" },
+        row("p1", "pinned"),
+        marker("pinned-divider"),
+        row("a1", "active"),
+        marker("settled-header"),
+      ];
+
+      expect(resolveSidebarDropTarget(nested, "child", "a1")).toBeNull();
+      expect(resolveSidebarDropTarget(nested, "a1", "child")).toEqual({
+        section: "pinned",
+        pinnedOrder: ["captain", "a1", "p1"],
+        activeOrder: [],
+      });
+    });
 
     it("never drops into the Working shelf, and keeps it out of the inbox order", () => {
       expect(resolveSidebarDropTarget(items, "a1", "w1")).toBeNull();

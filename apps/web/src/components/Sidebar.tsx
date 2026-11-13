@@ -123,6 +123,7 @@ import {
   useThreadActions,
 } from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useCaptainSupported, useOpenCaptain } from "../hooks/useOpenCaptain";
 import { useOrderWhileOpen } from "../hooks/useOrderWhileOpen";
 import { useProjectPin } from "../hooks/useProjectGroupUpdate";
 import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
@@ -184,6 +185,7 @@ import {
   filterSidebarProjectScopeItems,
   firstValidTimestampMs,
   isSidebarNestedLinkClick,
+  nestCaptainThreads,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   planSidebarThreadDrop,
@@ -489,8 +491,17 @@ function useSidebarThreads(input: {
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
   });
 
-  const { pinnedThreads, activeThreads, workingThreads, snoozedThreads, settledThreads } =
-    partition;
+  const { pinnedThreads, snoozedThreads, settledThreads } = partition;
+  const {
+    active: activeThreads,
+    working: workingThreads,
+    nestedByCaptain,
+  } = nestCaptainThreads({
+    pinned: pinnedThreads,
+    active: partition.activeThreads,
+    working: partition.workingThreads,
+  });
+  const nestedThreads = [...nestedByCaptain.values()].flat();
   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
   const olderSettledShelf = useOlderSettledShelf({
     scopes: olderSettledScopes([...serverConfigs.keys()], scopedProjectKeys),
@@ -544,7 +555,10 @@ function useSidebarThreads(input: {
           };
         });
   const orderedThreads = [
-    ...pinnedThreads,
+    ...pinnedThreads.flatMap((thread) => [
+      thread,
+      ...(nestedByCaptain.get(threadShellKey(thread)) ?? EMPTY_THREADS),
+    ]),
     ...(projectFolders === null
       ? activeThreads
       : projectFolders.flatMap((folder) => folder.threads)),
@@ -555,8 +569,9 @@ function useSidebarThreads(input: {
   const sectionByThreadKey = new Map<string, SidebarSection>();
   for (const [list, section] of [
     [pinnedThreads, "pinned"],
-    [activeThreads, "active"],
-    [workingThreads, "working"],
+    // A nested thread keeps the section it would otherwise show in.
+    [partition.activeThreads, "active"],
+    [partition.workingThreads, "working"],
     [snoozedThreads, "snoozed"],
     [settledThreads, "settled"],
   ] as const) {
@@ -564,10 +579,14 @@ function useSidebarThreads(input: {
   }
   return {
     ...partition,
+    activeThreads,
+    workingThreads,
+    nestedByCaptain,
     threads,
     workingShelfEnabled,
     searchableThreads: [
       ...pinnedThreads,
+      ...nestedThreads,
       ...activeThreads,
       ...workingThreads,
       ...snoozedThreads,
@@ -1271,6 +1290,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (isMobile) setOpenMobile(false);
     void handleNewThread(scopeProjectRef(group.environmentId, group.id));
   });
+  const openCaptain = useOpenCaptain();
+  const captainSupported = useCaptainSupported();
+  const openCaptainInProjectFolder = useStableCallback((group: SidebarProjectSnapshot) => {
+    if (isMobile) setOpenMobile(false);
+    void openCaptain(scopeProjectRef(group.environmentId, group.id));
+  });
   const handleProjectFolderContextMenu = useStableCallback(
     (group: SidebarProjectSnapshot, position: { x: number; y: number }) => {
       const api = readLocalApi();
@@ -1324,6 +1349,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     settledThreads,
     snoozeNow,
     searchableThreads,
+    nestedByCaptain,
     settledVisibleCount,
     settledCount,
     olderSettledShelf,
@@ -1966,8 +1992,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       return [];
     }
     const items: SidebarListItem[] = [{ kind: "marker", marker: "pinned-header" }];
-    const pinnedRows = rowsOf(pinnedThreads, "pinned");
-    items.push(...pinnedRows);
+    for (const thread of pinnedThreads) {
+      const key = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+      items.push({ kind: "thread", key, section: "pinned" });
+      for (const nested of nestedByCaptain.get(key) ?? []) {
+        items.push({
+          kind: "thread",
+          key: scopedThreadKey(scopeThreadRef(nested.environmentId, nested.id)),
+          section: "pinned",
+          nestedUnder: key,
+        });
+      }
+    }
     items.push({ kind: "marker", marker: "pinned-divider" });
     const activeRows = rowsOf(activeThreads, "active");
     items.push({ kind: "marker", marker: "active-placeholder" });
@@ -1988,7 +2024,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   })();
   // Preserve the list while streamed updates leave order unchanged to retain row memoization.
   const sidebarListItemsKey = sidebarListItemsFresh
-    .map((item) => (item.kind === "thread" ? item.section + ":" + item.key : item.marker))
+    .map((item) =>
+      item.kind === "thread"
+        ? item.section + ":" + item.key + ":" + (item.nestedUnder ?? "")
+        : item.marker,
+    )
     .join("\n");
   const [sidebarListItemsState, setSidebarListItems] = useState(sidebarListItemsFresh);
   const [sidebarListItemsKeyState, setSidebarListItemsKeyState] = useState(sidebarListItemsKey);
@@ -3364,8 +3404,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       const renderThreadRow = (
                         thread: EnvironmentThreadShell,
                         section: SidebarSection,
-                        // The tree row of the project folder this row sits in.
+                        // The tree row this one sits under: a project folder, or its captain.
                         folderRow?: string,
+                        // A captain's thread keeps its place under the captain.
+                        nested = false,
                       ) => {
                         const threadKey = scopedThreadKey(
                           scopeThreadRef(thread.environmentId, thread.id),
@@ -3385,6 +3427,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             sortableId={threadKey}
                             contextDrag={isContextDrag}
                             sortableDisabled={
+                              nested ||
                               renamingThreadKey === threadKey ||
                               !draggableThreadKeys.has(threadKey) ||
                               optimisticDrop !== null
@@ -3496,7 +3539,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         if (item.kind === "thread") {
                           // Folders draw active rows in their own place below.
                           if (projectFolders !== null && item.section === "active") continue;
-                          items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
+                          items.push(
+                            renderThreadRow(
+                              threadByKey.get(item.key)!,
+                              item.section,
+                              item.nestedUnder,
+                              item.nestedUnder !== undefined,
+                            ),
+                          );
                           continue;
                         }
                         if (projectFolders !== null && item.marker === "active-placeholder") {
@@ -3509,6 +3559,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 hiddenThreads={folder.hiddenThreads}
                                 onToggle={toggleProjectFolder}
                                 onNewThread={startThreadInProjectFolder}
+                                onOpenCaptain={
+                                  captainSupported(folder.group.environmentId)
+                                    ? openCaptainInProjectFolder
+                                    : undefined
+                                }
                                 onContextMenu={handleProjectFolderContextMenu}
                               />,
                             );

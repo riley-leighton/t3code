@@ -76,6 +76,7 @@ import {
   PinIcon,
   PinOffIcon,
   PlugIcon,
+  ShipWheelIcon,
   SquarePenIcon,
   TextSearchIcon,
   UserPlusIcon,
@@ -99,6 +100,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useCaptainSupported, useOpenCaptain } from "../hooks/useOpenCaptain";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { copyThreadReference } from "../lib/copyThreadReference";
 import {
@@ -479,6 +481,8 @@ function OpenCommandPaletteDialog(props: {
   const availableSettingsSearchItems = useAvailableSettingsSearchItems();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
+  const openCaptain = useOpenCaptain();
+  const captainSupported = useCaptainSupported();
   const paletteRouteTarget = useThreadRouteTarget();
   const projects = useProjects();
   const referenceThreadRef =
@@ -1311,6 +1315,27 @@ function OpenCommandPaletteDialog(props: {
           });
         },
       });
+      const captainProjectRef = resolveThreadActionProjectRef({
+        activeDraftThread,
+        activeThread: activeThread ?? undefined,
+        defaultProjectRef,
+        handleNewThread,
+      });
+      if (captainProjectRef !== null && captainSupported(captainProjectRef.environmentId)) {
+        actionItems.push({
+          kind: "action",
+          value: "action:open-captain",
+          searchTerms: ["captain", "orchestrator", "coordinate", "status", "delegate"],
+          title: (
+            <>
+              Open the captain of <span className="font-semibold">{activeProjectTitle}</span>
+            </>
+          ),
+          searchTitle: `Open the captain of ${activeProjectTitle}`,
+          icon: <ShipWheelIcon className={ITEM_ICON_CLASS} />,
+          run: () => openCaptain(captainProjectRef),
+        });
+      }
     }
 
     actionItems.push({
