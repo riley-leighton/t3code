@@ -16,11 +16,11 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { buildTriageAppPrompt, type TriageSourceClone } from "./triagePrompt.ts";
 import { triageSourceCacheDir, writeTriageSession } from "./triageSession.ts";
 
-const T3CODE_REPOSITORY_URL = "https://github.com/pingdotgg/t3code";
+export const T3CODE_REPOSITORY_URL = "https://github.com/pingdotgg/t3code";
 
 // No tty: a credential prompt would hang until the timeout, so git must fail
 // instead. An empty GIT_ASKPASS also skips core.askPass and SSH_ASKPASS helpers.
-const GIT_ENV = {
+export const GIT_ENV = {
   GIT_TERMINAL_PROMPT: "0",
   GIT_ASKPASS: "",
   // English messages without overriding LC_CTYPE, which a global post-checkout hook inherits.
@@ -48,15 +48,19 @@ const describeClient = (client: AuthClientPresentationMetadata) =>
     .filter((part) => part !== undefined)
     .join(" ");
 
-/** Picks the release tag for `version`, or `main` when the build has no tag. */
-export const pickSourceRef = (lsRemoteOutput: string, version: string) => {
-  const commits = new Map(
+/** Maps each ref `git ls-remote` listed to its object. */
+export const parseLsRemote = (lsRemoteOutput: string) =>
+  new Map(
     lsRemoteOutput
       .split("\n")
       .map((line) => line.trim().split("\t"))
       .filter((fields): fields is [string, string] => fields.length === 2)
       .map(([commit, ref]) => [ref, commit]),
   );
+
+/** Picks the release tag for `version`, or `main` when the build has no tag. */
+export const pickSourceRef = (lsRemoteOutput: string, version: string) => {
+  const commits = parseLsRemote(lsRemoteOutput);
   const tag = `v${version}`;
   // Annotated tags list the tag object first and the commit as `^{}`.
   const tagCommit = commits.get(`refs/tags/${tag}^{}`) ?? commits.get(`refs/tags/${tag}`);

@@ -521,6 +521,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     desktopBrowserFd,
     desktopBrowserControlFd,
     resourceMonitorPath,
+    forkSourceDir: ServerConfig.forkSourceDir,
     autoBootstrapProjectFromCwd,
     logWebSocketEvents,
     tailscaleServeEnabled,

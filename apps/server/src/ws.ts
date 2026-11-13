@@ -113,6 +113,7 @@ import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as NativeChildWorkQuery from "./orchestration-v2/NativeChildWorkQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
+import * as ForkUpdate from "./forkUpdate/ForkUpdate.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
@@ -1495,6 +1496,7 @@ export const layerWsRpc = (
             );
       const usage = yield* UsageService.UsageService;
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
+      const forkUpdate = yield* ForkUpdate.ForkUpdate;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
       const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
       const repositoryIdentityResolver =
@@ -3382,6 +3384,16 @@ export const layerWsRpc = (
                       })),
                     )
                   : Stream.empty;
+              const forkUpdateUpdates =
+                input.forkUpdate === true
+                  ? forkUpdate.streamChanges.pipe(
+                      Stream.map((status) => ({
+                        version: 1 as const,
+                        type: "forkUpdateUpdated" as const,
+                        payload: status === undefined ? {} : { forkUpdate: status },
+                      })),
+                    )
+                  : Stream.empty;
               const settingsUpdates = settingsChanges.pipe(
                 Stream.map((settings) =>
                   ServerSettings.redactServerSettingsForClient(settings, settingsClient),
@@ -3399,7 +3411,10 @@ export const layerWsRpc = (
                   providerStatuses,
                   Stream.merge(
                     settingsUpdates,
-                    Stream.merge(environmentThemeUpdates, usageLimitSourceUpdates),
+                    Stream.merge(
+                      environmentThemeUpdates,
+                      Stream.merge(usageLimitSourceUpdates, forkUpdateUpdates),
+                    ),
                   ),
                 ),
               );

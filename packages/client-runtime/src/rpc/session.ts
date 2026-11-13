@@ -65,6 +65,7 @@ export interface RpcSession {
 export interface RpcSessionOptions {
   readonly environmentThemes?: boolean;
   readonly usageLimitSources?: boolean;
+  readonly forkUpdate?: boolean;
   readonly usageLimitsCommand?: boolean;
   readonly providerCatalogsOnDemand?: boolean;
   readonly providerCatalogDigests?: boolean;
@@ -102,12 +103,17 @@ type UsageLimitSourcesUpdatedEvent = Extract<
   ServerConfigStreamEvent,
   { readonly type: "usageLimitSourcesUpdated" }
 >;
+type ForkUpdateUpdatedEvent = Extract<
+  ServerConfigStreamEvent,
+  { readonly type: "forkUpdateUpdated" }
+>;
 
 interface ServerConfigReplayState {
   readonly projection: ServerConfigProjection;
   readonly revision: number;
   readonly themesEvent: EnvironmentThemesUpdatedEvent | undefined;
   readonly sourcesEvent: UsageLimitSourcesUpdatedEvent | undefined;
+  readonly forkUpdateEvent: ForkUpdateUpdatedEvent | undefined;
 }
 
 interface BufferedServerConfigEvent {
@@ -128,6 +134,7 @@ function serverConfigReplayEvents(
     snapshot,
     ...(state.themesEvent === undefined ? [] : [state.themesEvent]),
     ...(state.sourcesEvent === undefined ? [] : [state.sourcesEvent]),
+    ...(state.forkUpdateEvent === undefined ? [] : [state.forkUpdateEvent]),
   ];
 }
 
@@ -177,6 +184,7 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
   const serverConfigInput: ServerConfigSubscriptionInput = {
     ...(options.environmentThemes === true ? { environmentThemes: true } : {}),
     ...(options.usageLimitSources === true ? { usageLimitSources: true } : {}),
+    ...(options.forkUpdate === true ? { forkUpdate: true } : {}),
     ...(options.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
     ...(options.providerCatalogsOnDemand === true ? { providerCatalogsOnDemand: true } : {}),
     ...(options.providerCatalogDigests === true ? { providerCatalogDigests: true } : {}),
@@ -322,6 +330,10 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
                 event.type === "usageLimitSourcesUpdated"
                   ? event
                   : Option.getOrUndefined(current)?.sourcesEvent,
+              forkUpdateEvent:
+                event.type === "forkUpdateUpdated"
+                  ? event
+                  : Option.getOrUndefined(current)?.forkUpdateEvent,
             } satisfies ServerConfigReplayState;
             return [
               Option.some({ event, replay: next, revision: next.revision }),

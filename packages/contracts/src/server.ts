@@ -672,6 +672,14 @@ export const ServerEventLoopStall = Schema.Struct({
 });
 export type ServerEventLoopStall = typeof ServerEventLoopStall.Type;
 
+/** Whether upstream T3 Code's newest stable release is in this fork's source checkout. */
+export const ServerForkUpdate = Schema.Struct({
+  sourceDir: TrimmedNonEmptyString,
+  latestStableTag: TrimmedNonEmptyString,
+  merged: Schema.Boolean,
+});
+export type ServerForkUpdate = typeof ServerForkUpdate.Type;
+
 export const ServerConfig = Schema.Struct({
   environment: ExecutionEnvironmentDescriptor,
   auth: ServerAuthDescriptor,
@@ -729,6 +737,8 @@ export const ServerConfig = Schema.Struct({
   environmentThemes: Schema.optional(Schema.Array(EnvironmentTheme)),
   /** Stream-only and opt-in; the source stream emits the current set on subscribe. */
   usageLimitSources: Schema.optional(UsageLimitSourceSnapshots),
+  /** Stream-only and opt-in, like the two above. Absent when the server cannot tell. */
+  forkUpdate: Schema.optional(ServerForkUpdate),
 });
 export type ServerConfig = typeof ServerConfig.Type;
 
@@ -865,6 +875,19 @@ export const ServerConfigStreamUsageLimitSourcesUpdatedEvent = Schema.Struct({
 export type ServerConfigStreamUsageLimitSourcesUpdatedEvent =
   typeof ServerConfigStreamUsageLimitSourcesUpdatedEvent.Type;
 
+export const ServerConfigForkUpdateUpdatedPayload = Schema.Struct({
+  forkUpdate: Schema.optional(ServerForkUpdate),
+});
+export type ServerConfigForkUpdateUpdatedPayload = typeof ServerConfigForkUpdateUpdatedPayload.Type;
+
+export const ServerConfigStreamForkUpdateUpdatedEvent = Schema.Struct({
+  version: Schema.Literal(1),
+  type: Schema.Literal("forkUpdateUpdated"),
+  payload: ServerConfigForkUpdateUpdatedPayload,
+});
+export type ServerConfigStreamForkUpdateUpdatedEvent =
+  typeof ServerConfigStreamForkUpdateUpdatedEvent.Type;
+
 export const ServerConfigStreamEvent = Schema.Union([
   ServerConfigStreamSnapshotEvent,
   ServerConfigStreamKeybindingsUpdatedEvent,
@@ -873,6 +896,7 @@ export const ServerConfigStreamEvent = Schema.Union([
   ServerConfigStreamSettingsUpdatedEvent,
   ServerConfigStreamEnvironmentThemesUpdatedEvent,
   ServerConfigStreamUsageLimitSourcesUpdatedEvent,
+  ServerConfigStreamForkUpdateUpdatedEvent,
 ]);
 export type ServerConfigStreamEvent = typeof ServerConfigStreamEvent.Type;
 

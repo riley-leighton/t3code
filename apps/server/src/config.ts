@@ -1,3 +1,6 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- resolved once at module load, before any service exists.
+import * as NodePath from "node:path";
+
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -25,6 +28,13 @@ import packageJson from "../package.json" with { type: "json" };
 declare const __T3CODE_TELEMETRY_CHANNEL__: ReleaseChannel | undefined;
 export const telemetryChannel: ReleaseChannel =
   typeof __T3CODE_TELEMETRY_CHANNEL__ === "undefined" ? "dev" : __T3CODE_TELEMETRY_CHANNEL__;
+
+declare const __T3CODE_FORK_SOURCE_DIR__: string | undefined;
+/** The fork's source checkout: where a bundled build ran, or the checkout this file is in. */
+export const forkSourceDir =
+  typeof __T3CODE_FORK_SOURCE_DIR__ === "undefined"
+    ? NodePath.resolve(import.meta.dirname, "../../..")
+    : __T3CODE_FORK_SOURCE_DIR__;
 
 export const DEFAULT_PORT = 3773;
 
@@ -104,6 +114,8 @@ export class ServerConfig extends Context.Service<
     readonly desktopBrowserFd?: number | undefined;
     readonly desktopBrowserControlFd?: number | undefined;
     readonly resourceMonitorPath?: string | undefined;
+    /** The checkout the fork updates from; absent in tests. */
+    readonly forkSourceDir?: string | undefined;
     readonly autoBootstrapProjectFromCwd: boolean;
     readonly logWebSocketEvents: boolean;
     readonly tailscaleServeEnabled: boolean;

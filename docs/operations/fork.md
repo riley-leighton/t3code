@@ -40,8 +40,10 @@ has no update feed and never updates itself.
 
 ## Update from upstream
 
-**Settings → About → Update from upstream** opens a thread in this checkout with these steps as its
-prompt. To do it by hand:
+The server checks every 6 hours whether upstream's newest stable release (`vX.Y.Z`) is in this
+checkout. **Settings → About** says "Includes T3 Code vX.Y.Z" when it is, and "Update to vX.Y.Z" with
+an **Update** button when it is not. The button opens a thread in this checkout with these steps as
+its prompt. To do it by hand:
 
 1. Commit or stash your work. Stop if `git status` is not clean.
 2. `git fetch upstream`, then `git merge upstream/main` into the branch you build from. Nothing new
