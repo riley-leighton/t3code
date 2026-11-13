@@ -56,8 +56,8 @@ The agent, or you by hand, then:
    above and this update flow still work.
 3. Runs `vp install`, then `vp run check:changed`, and fixes what the merge broke.
 4. In the source checkout, stops and asks if `git status` is not clean, the branch is not `main`, or
-   `main` has moved since the update branch was cut, which is when
-   `git merge-base --is-ancestor main update/vX.Y.Z` fails. It never stashes, switches branches or
+   `main` has commits the update branch lacks, so it cannot fast-forward
+   (`git merge-base --is-ancestor main update/vX.Y.Z` fails). It never stashes, switches branches or
    rebases there. Otherwise it runs `git merge --ff-only update/vX.Y.Z` on `main`.
 5. Builds the DMG in the source checkout, not the worktree, as above, and opens it. The build
    records the checkout's path for the next update, so it must be one that stays.
